@@ -1,0 +1,5 @@
+# Bibliotecas principais para o projeto
+openai>=1.0.0
+python-dotenv>=1.0.0
+PyAudio>=0.2.11      # Necessário para capturar áudio do microfone
+requests>=2.31.0
