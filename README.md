@@ -1,4 +1,4 @@
-# Multi-Language Voice Assistant 🎙️🤖
+# Multi-Language Voice Assistant
 
 ![Python Version](https://img.shields.io/badge/python-3.12-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
@@ -11,14 +11,14 @@ Este projeto foi desenvolvido como o desafio final do curso da **Digital Innovat
 
 ---
 
-## 🧩 Fluxo de Funcionamento
+## Fluxo de Funcionamento
 [Som ambiente] -> **VAD** (Filtro de voz) -> **Faster-Whisper** (Transcrição Local) -> **GPT-4o** (Inteligência) -> **gTTS** (Sintetizador) -> [Resposta em Áudio]
 
 
 
 ---
 
-## 🚀 Diferenciais de Engenharia
+## Diferenciais de Engenharia
 
 - **VAD (Voice Activity Detection):** Implementação de `webrtcvad` nível 3 para garantir que o sistema só processe fala humana, economizando recursos e evitando falsos positivos.
 - **Infrerência Local (STT):** Utilização do `faster-whisper` com quantização `int8`, permitindo transcrição rápida mesmo em CPUs domésticas.
@@ -27,7 +27,7 @@ Este projeto foi desenvolvido como o desafio final do curso da **Digital Innovat
 
 ---
 
-## 🛠️ Stack Tecnológica
+## Stack Tecnológica
 
 | Camada | Tecnologia | Implementação |
 | :--- | :--- | :--- |
@@ -39,7 +39,7 @@ Este projeto foi desenvolvido como o desafio final do curso da **Digital Innovat
 
 ---
 
-## ⚙️ Instalação e Execução
+## Instalação e Execução
 
 ### 1. Dependências do Sistema
 Prepare as bibliotecas de áudio essenciais:
