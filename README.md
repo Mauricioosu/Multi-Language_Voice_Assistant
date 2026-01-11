@@ -24,3 +24,9 @@ Antes de começar, você precisará de uma chave de API da OpenAI.
    ```bash
    git clone [https://github.com/Mauricioosu/Multi-Language_Voice_Assistant.git](https://github.com/Mauricioosu/Multi-Language_Voice_Assistant.git)
    cd Multi-Language_Voice_Assistant
+
+## ⚙️ Configuração Híbrida
+
+O assistente detecta automaticamente como operar:
+- **Modo Online:** Se uma `OPENAI_API_KEY` válida estiver presente no `.env`.
+- **Modo Offline:** O sistema utilizará o `faster-whisper` local para transcrição mesmo sem internet.
