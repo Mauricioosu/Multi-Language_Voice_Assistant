@@ -5,33 +5,34 @@ import pyaudio
 import webrtcvad
 import collections
 import logging
+import warnings
+from faster_whisper import WhisperModel
 from openai import OpenAI
 from dotenv import load_dotenv
 
-# Configuração de Logging Profissional
+warnings.filterwarnings("ignore", category=UserWarning, module="webrtcvad")
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-class VoiceAssistant:
+class OfflineVoiceAssistant:
     def __init__(self):
-        self.api_key = os.getenv("OPENAI_API_KEY")
-        if not self.api_key:
-            logger.error("OPENAI_API_KEY não encontrada.")
-            raise ValueError("Configure a chave no arquivo .env")
+        logger.info("📦 Carregando modelo Whisper local...")
+        # Modelo 'base' para CPU. Se travar, mude para 'tiny'
+        self.stt_model = WhisperModel("base", device="cpu", compute_type="int8")
         
-        self.client = OpenAI(api_key=self.api_key)
-        self.vad = webrtcvad.Vad(2)
-        self.history = [{"role": "system", "content": "Você é um assistente conciso e útil."}]
+        api_key = os.getenv("OPENAI_API_KEY")
+        self.client = OpenAI(api_key=api_key) if api_key else None
         
-        # Configurações de Áudio
+        self.vad = webrtcvad.Vad(3) # Nível 3 para maior estabilidade
+        self.history = [{"role": "system", "content": "Você é um assistente offline útil."}]
+        
         self.RATE = 16000
         self.CHUNK_DURATION_MS = 30
         self.CHUNK = int(self.RATE * self.CHUNK_DURATION_MS / 1000)
 
     def record_audio(self, filename="input.wav"):
-        """Captura áudio com VAD e garante fechamento de recursos."""
         p = pyaudio.PyAudio()
         try:
             stream = p.open(format=pyaudio.paInt16, channels=1, rate=self.RATE, 
@@ -41,6 +42,10 @@ class VoiceAssistant:
             frames = []
             ring_buffer = collections.deque(maxlen=40) 
             triggered = False
+            
+            # Limpeza de buffer inicial
+            for _ in range(0, 15):
+                stream.read(self.CHUNK, exception_on_overflow=False)
 
             while True:
                 frame = stream.read(self.CHUNK, exception_on_overflow=False)
@@ -53,7 +58,7 @@ class VoiceAssistant:
                 else:
                     frames.append(frame)
                     ring_buffer.append(is_speech)
-                    if ring_buffer.count(False) > 0.8 * ring_buffer.maxlen:
+                    if ring_buffer.count(False) > 0.9 * ring_buffer.maxlen:
                         logger.info("✅ Fim da fala.")
                         break
         finally:
@@ -61,47 +66,55 @@ class VoiceAssistant:
             stream.close()
             p.terminate()
 
-        with wave.open(filename, 'wb') as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(p.get_sample_size(pyaudio.paInt16))
-            wf.setframerate(self.RATE)
-            wf.writeframes(b''.join(frames))
+        if len(frames) > 15:
+            with wave.open(filename, 'wb') as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(p.get_sample_size(pyaudio.paInt16))
+                wf.setframerate(self.RATE)
+                wf.writeframes(b''.join(frames))
+            return True
+        return False
 
-    async def get_transcription(self, filename):
-        """Encapsula a chamada ao Whisper com tratamento de erro específico."""
+    def transcribe_local(self, filename):
         try:
-            with open(filename, "rb") as f:
-                return self.client.audio.transcriptions.create(model="whisper-1", file=f).text
+            logger.info("🔍 Processando áudio local...")
+            segments, _ = self.stt_model.transcribe(filename, beam_size=5)
+            text = " ".join([segment.text for segment in segments])
+            return text.strip()
         except Exception as e:
-            logger.error(f"Falha na transcrição: {e}")
+            logger.error(f"Erro Whisper Local: {e}")
             return None
 
-    async def get_chat_response(self, text):
-        """Encapsula a lógica do LLM."""
+    def get_llm_response(self, text):
+        if not self.client: return "Modo offline (sem LLM)."
         self.history.append({"role": "user", "content": text})
-        try:
-            response = self.client.chat.completions.create(model="gpt-4o", messages=self.history)
-            answer = response.choices[0].message.content
-            self.history.append({"role": "assistant", "content": answer})
-            return answer
-        except Exception as e:
-            logger.error(f"Falha no GPT-4o: {e}")
-            return "Desculpe, tive um problema ao processar sua resposta."
+        response = self.client.chat.completions.create(model="gpt-4o", messages=self.history)
+        answer = response.choices[0].message.content
+        self.history.append({"role": "assistant", "content": answer})
+        return answer
 
     async def run(self):
-        logger.info("🚀 Assistente Online Iniciado.")
+        logger.info("🚀 Assistente Offline STT Iniciado.")
         while True:
             try:
-                self.record_audio()
-                text = await self.get_transcription("input.wav")
+                if self.record_audio():
+                    text = self.transcribe_local("input.wav")
+                    if text and len(text) > 2:
+                        print(f"👤 Você: {text}")
+                        response = self.get_llm_response(text)
+                        print(f"🤖 Assistente: {response}")
                 
-                if text and len(text.strip()) > 1:
-                    print(f"👤 Você: {text}")
-                    response = await self.get_chat_response(text)
-                    print(f"🤖 Assistente: {response}")
-                
+                logger.info("⏳ Aguardando...")
+                await asyncio.sleep(1.5)
             except KeyboardInterrupt:
                 break
             except Exception as e:
-                logger.error(f"Erro inesperado no loop: {e}")
-                await asyncio.sleep(1)
+                logger.error(f"Erro no loop: {e}")
+                await asyncio.sleep(2)
+
+if __name__ == "__main__":
+    assistant = OfflineVoiceAssistant()
+    try:
+        asyncio.run(assistant.run())
+    except KeyboardInterrupt:
+        logger.info("Saindo...")

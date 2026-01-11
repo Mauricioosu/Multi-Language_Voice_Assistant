@@ -2,10 +2,12 @@
 openai>=1.0.0
 python-dotenv>=1.0.0
 
-# --- Audio Engine (System dependencies: portaudio19-dev) ---
+# --- Local Intelligence (Offline STT) ---
+faster-whisper>=1.0.0
+
+# --- Audio Engine (System: portaudio19-dev python3-dev) ---
 pyaudio>=0.2.14
 webrtcvad>=2.0.10
 
 # --- Compatibility & Utilities ---
 setuptools>=69.0.0
-asyncio>=3.4.3
