@@ -1,0 +1,26 @@
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+.ipynb_checkpoints/
+
+# Environments e dependências
+.venv/
+venv/
+env/
+dist/
+build/
+*.egg-info/
+
+# Variáveis de ambiente (CRÍTICO: Nunca comitar este arquivo)
+.env
+.env.local
+.env.secret
+
+# Áudios temporários gerados pelo assistente
+*.mp3
+*.wav
+*.m4a
+
+# Logs de sistema
+*.log
