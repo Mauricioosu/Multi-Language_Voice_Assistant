@@ -1,5 +1,13 @@
-# Bibliotecas principais para o projeto
+# --- Core API & Environment ---
 openai>=1.0.0
 python-dotenv>=1.0.0
-PyAudio>=0.2.11      # Necessário para capturar áudio do microfone
-requests>=2.31.0
+
+# --- Local Intelligence (Offline STT) ---
+faster-whisper>=1.0.0
+
+# --- Audio Engine (System dependencies: portaudio19-dev) ---
+pyaudio>=0.2.14
+webrtcvad>=2.0.10
+
+# --- Compatibility & Utilities ---
+setuptools>=69.0.0
