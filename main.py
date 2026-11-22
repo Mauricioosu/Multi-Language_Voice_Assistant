@@ -1,136 +1,199 @@
-import os
+
 import asyncio
+import collections
+import json
+import logging
+import os
+from pathlib import Path
+import subprocess
+import urllib.error
+import urllib.request
 import wave
+
+import numpy as np
 import pyaudio
 import webrtcvad
-import collections
-import logging
-import warnings
-from gtts import gTTS
 from faster_whisper import WhisperModel
-from openai import OpenAI
-from dotenv import load_dotenv
 
-# Silenciar avisos e configurar logs
-warnings.filterwarnings("ignore", category=UserWarning, module="webrtcvad")
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-load_dotenv()
 
 class VoiceAssistantDIO:
+    RATE = 16000
+    CHUNK_DURATION_MS = 30
+    CHUNK = RATE * CHUNK_DURATION_MS // 1000
+    SILENCE_DURATION_MS = 1200
+    MAX_RECORD_SECONDS = 20
+    WAIT_FOR_SPEECH_SECONDS = 15
+
     def __init__(self):
-        logger.info("📦 Inicializando v1.0.0 - Desafio DIO...")
-        
-        # 1. Motor STT Local (Faster-Whisper)
-        self.stt_model = WhisperModel("base", device="cpu", compute_type="int8")
-        
-        # 2. Configuração do Cliente OpenAI
-        self.api_key = os.getenv("OPENAI_API_KEY")
-        if not self.api_key:
-            logger.warning("⚠️ OPENAI_API_KEY não encontrada no arquivo .env")
-        self.client = OpenAI(api_key=self.api_key) if self.api_key else None
-        
-        # 3. Componentes de Áudio
-        self.vad = webrtcvad.Vad(3)
-        self.history = [{"role": "system", "content": "Você é um assistente útil e conciso."}]
-        self.RATE = 16000
-        self.CHUNK_DURATION_MS = 30
-        self.CHUNK = int(self.RATE * self.CHUNK_DURATION_MS / 1000)
+        logger.info("📦 Inicializando assistente 100%% local...")
+        # Evita downloads automáticos: execute a preparação inicial antes.
+        self.stt_model = WhisperModel(
+            os.getenv("WHISPER_MODEL", "base"),
+            device="cpu",
+            compute_type="int8",
+            local_files_only=True,
+        )
+        self.vad = webrtcvad.Vad(2)
+        self.ollama_model = os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
+        self.ollama_url = "http://127.0.0.1:11434/api/chat"
+        self.piper_model = Path(os.getenv("PIPER_MODEL", "models/pt_BR-faber-medium.onnx"))
+        self.history = [
+            {"role": "system", "content": "Você é um assistente de voz útil e conciso. Responda em português brasileiro."}
+        ]
 
     def record_audio(self, filename="input.wav"):
-        p = pyaudio.PyAudio()
+        audio = pyaudio.PyAudio()
         stream = None
-
+        frames = []
+        pre_speech = collections.deque(maxlen=10)
+        silence_frames = 0
+        wait_frames = 0
+        silence_limit = self.SILENCE_DURATION_MS // self.CHUNK_DURATION_MS
+        wait_limit = self.WAIT_FOR_SPEECH_SECONDS * 1000 // self.CHUNK_DURATION_MS
+        record_limit = self.MAX_RECORD_SECONDS * 1000 // self.CHUNK_DURATION_MS
+        triggered = False
         try:
-            stream = p.open(
-                format=pyaudio.paInt16,
-                channels=1,
-                rate=self.RATE,
-                input=True,
-                frames_per_buffer=self.CHUNK
+            stream = audio.open(
+                format=pyaudio.paInt16, channels=1, rate=self.RATE,
+                input=True, frames_per_buffer=self.CHUNK,
             )
-
+            logger.info("🎙️ Aguardando fala... (Ctrl+C para encerrar)")
+            while True:
+                frame = stream.read(self.CHUNK, exception_on_overflow=False)
+                if len(frame) != self.CHUNK * 2:
+                    continue
+                is_speech = self.vad.is_speech(frame, self.RATE)
+                if not triggered:
+                    pre_speech.append(frame)
+                    wait_frames += 1
+                    if is_speech:
+                        triggered = True
+                        frames.extend(pre_speech)
+                        pre_speech.clear()
+                        logger.info("⚡ Voz detectada!")
+                    elif wait_frames >= wait_limit:
+                        logger.info("⏳ Nenhuma fala detectada.")
+                        return False
+                else:
+                    frames.append(frame)
+                    silence_frames = 0 if is_speech else silence_frames + 1
+                    if silence_frames >= silence_limit:
+                        logger.info("✅ Fim da fala.")
+                        break
+                    if len(frames) >= record_limit:
+                        logger.info("⏱️ Limite de gravação atingido.")
+                        break
         finally:
             if stream is not None:
-                if stream.is_active():
+                try:
                     stream.stop_stream()
-                stream.close()
+                finally:
+                    stream.close()
+            audio.terminate()
 
-            p.terminate()
-
-        if len(frames) > 15:
-            with wave.open(filename, 'wb') as wf:
-                wf.setnchannels(1)
-                wf.setsampwidth(p.get_sample_size(pyaudio.paInt16))
-                wf.setframerate(self.RATE)
-                wf.writeframes(b''.join(frames))
-            return True
-        return False
+        if len(frames) < 15:
+            return False
+        with wave.open(str(filename), "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(self.RATE)
+            wav_file.writeframes(b"".join(frames))
+        return True
 
     def transcribe_local(self, filename):
-        """Passo 2 do desafio: Whisper Local"""
         try:
-            segments, _ = self.stt_model.transcribe(filename, beam_size=5)
-            return " ".join([s.text for s in segments]).strip()
-        except Exception as e:
-            logger.error(f"Erro Whisper: {e}")
+            with wave.open(str(filename), "rb") as wav_file:
+                fmt = (wav_file.getnchannels(), wav_file.getframerate(), wav_file.getsampwidth())
+                if wav_file.getcomptype() != "NONE" or fmt != (1, self.RATE, 2):
+                    raise ValueError("Esperado WAV PCM mono 16 kHz, 16 bits.")
+                raw = wav_file.readframes(wav_file.getnframes())
+            if not raw:
+                return None
+            # Array NumPy evita o erro metadata_errors do PyAV.
+            samples = np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
+            segments, _ = self.stt_model.transcribe(samples, language="pt", beam_size=5)
+            text = " ".join(segment.text.strip() for segment in segments).strip()
+            logger.info("📝 Transcrição: %s", text or "(vazia)")
+            return text or None
+        except Exception:
+            logger.exception("Erro na transcrição")
             return None
 
     def get_llm_response(self, text):
-        """Passo 3 do desafio: ChatGPT com mensagens de erro customizadas"""
-        # Caso 1: API Key ausente no .env
-        if not self.api_key:
-            return "Modo offline ativo. API KEY não encontrada. Por favor, adicione sua chave no arquivo .env ou use a versão Ollama."
-        
-        self.history.append({"role": "user", "content": text})
+        """Consulta somente o Ollama local, via loopback (sem serviços externos)."""
+        messages = self.history + [{"role": "user", "content": text}]
+        payload = json.dumps({
+            "model": self.ollama_model,
+            "messages": messages,
+            "stream": False,
+            "options": {"num_predict": 180},
+        }).encode("utf-8")
+        request = urllib.request.Request(
+            self.ollama_url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
         try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o", 
-                messages=self.history,
-                timeout=15
-            )
-            answer = response.choices[0].message.content
-            self.history.append({"role": "assistant", "content": answer})
+            with urllib.request.urlopen(request, timeout=120) as response:
+                result = json.load(response)
+            answer = result["message"]["content"].strip()
+            if not answer:
+                raise ValueError("Ollama retornou resposta vazia.")
+            self.history.extend([
+                {"role": "user", "content": text},
+                {"role": "assistant", "content": answer},
+            ])
+            # Limita histórico para não crescer indefinidamente.
+            self.history = [self.history[0]] + self.history[1:][-20:]
             return answer
-        except Exception as e:
-            error_msg = str(e).lower()
-            # Caso 2: Falta de saldo/cota
-            if "insufficient_quota" in error_msg or "429" in error_msg:
-                return "Modo offline ativo. Seu saldo é insuficiente. Cheque sua carteira na OpenAI ou instale a versão offline com Ollama."
-            return f"Houve um erro técnico: {e}"
+        except urllib.error.URLError:
+            logger.exception("Ollama indisponível. Inicie com 'ollama serve' e baixe o modelo.")
+        except Exception:
+            logger.exception("Erro ao consultar o modelo local")
+        return None
 
-    def speak(self, text):
-        """Passo 4 do desafio: gTTS Output"""
+    def speak(self, text, filename="response.wav"):
+        """Sintetiza com Piper local e reproduz via aplay (ALSA)."""
+        if not text:
+            return
+        if not self.piper_model.is_file():
+            logger.warning("Modelo Piper não encontrado: %s. Resposta apenas em texto.", self.piper_model)
+            return
         try:
-            logger.info("🔊 Gerando voz...")
-            tts = gTTS(text=text, lang='pt')
-            filename = "response.mp3"
-            tts.save(filename)
-            os.system(f"mpg123 -q {filename}")
-        except Exception as e:
-            logger.error(f"Erro no TTS: {e}")
+            subprocess.run(
+                ["piper", "--model", str(self.piper_model), "--output_file", filename],
+                input=text, text=True, check=True, timeout=90,
+                stdout=subprocess.DEVNULL,
+            )
+            subprocess.run(["aplay", "-q", filename], check=True, timeout=90)
+        except FileNotFoundError as error:
+            logger.error("Executável ausente: %s. Instale Piper e alsa-utils.", error.filename)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            logger.exception("Falha na síntese/reprodução de voz")
 
     async def run(self):
-        logger.info("🚀 Assistente v1.0.0 Iniciado!")
+        logger.info("🚀 Assistente offline iniciado!")
         while True:
-            try:
-                if self.record_audio():
-                    text = self.transcribe_local("input.wav")
-                    if text and len(text) > 2:
-                        print(f"👤 Você: {text}")
-                        response = self.get_llm_response(text)
-                        print(f"🤖 Assistente: {response}")
-                        self.speak(response)
-                
-                logger.info("⏳ Aguardando próxima interação...")
-                await asyncio.sleep(1.5)
-            except KeyboardInterrupt:
-                break
+            if self.record_audio():
+                text = self.transcribe_local("input.wav")
+                if text and len(text) > 2:
+                    print(f"👤 Você: {text}", flush=True)
+                    answer = self.get_llm_response(text)
+                    if answer:
+                        print(f"🤖 Assistente: {answer}", flush=True)
+                        self.speak(answer)
+            await asyncio.sleep(0.5)
+
 
 if __name__ == "__main__":
-    assistant = VoiceAssistantDIO()
     try:
+        assistant = VoiceAssistantDIO()
         asyncio.run(assistant.run())
     except KeyboardInterrupt:
-        logger.info("Encerrando...")
+        logger.info("Assistente encerrado (Ctrl+C).")
+    except Exception:
+        logger.exception("Erro inesperado")
