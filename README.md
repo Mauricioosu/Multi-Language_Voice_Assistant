@@ -57,7 +57,7 @@ The core voice interaction pipeline has been successfully tested on Debian Linux
 
 ## Future Improvements
 
-- [ ] Refactor the application into independent modules.
+- [X] Refactor the application into independent modules.
 - [ ] Implement automated tests using pytest.
 - [ ] Add GitHub Actions for continuous integration.
 - [ ] Optimize inference latency and audio device management.
