@@ -40,30 +40,23 @@ class VoiceAssistantDIO:
 
     def record_audio(self, filename="input.wav"):
         p = pyaudio.PyAudio()
-        try:
-            stream = p.open(format=pyaudio.paInt16, channels=1, rate=self.RATE, 
-                            input=True, frames_per_buffer=self.CHUNK)
-            logger.info("🎙️ Aguardando fala...")
-            frames, ring_buffer, triggered = [], collections.deque(maxlen=40), False
-            
-            for _ in range(0, 15): stream.read(self.CHUNK, exception_on_overflow=False)
+        stream = None
 
-            while True:
-                frame = stream.read(self.CHUNK, exception_on_overflow=False)
-                is_speech = self.vad.is_speech(frame, self.RATE)
-                if not triggered:
-                    if is_speech:
-                        triggered = True
-                        logger.info("⚡ Voz detectada!")
-                else:
-                    frames.append(frame)
-                    ring_buffer.append(is_speech)
-                    if ring_buffer.count(False) > 0.9 * ring_buffer.maxlen:
-                        logger.info("✅ Fim da fala.")
-                        break
+        try:
+            stream = p.open(
+                format=pyaudio.paInt16,
+                channels=1,
+                rate=self.RATE,
+                input=True,
+                frames_per_buffer=self.CHUNK
+            )
+
         finally:
-            stream.stop_stream()
-            stream.close()
+            if stream is not None:
+                if stream.is_active():
+                    stream.stop_stream()
+                stream.close()
+
             p.terminate()
 
         if len(frames) > 15:

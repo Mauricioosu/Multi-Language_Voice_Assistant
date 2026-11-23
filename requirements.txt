@@ -11,3 +11,5 @@ webrtcvad>=2.0.10
 
 # --- Compatibility & Utilities ---
 setuptools>=69.0.0
+
+gTTS>=2.5.0
