@@ -1,83 +1,67 @@
-# Multi-Language Voice Assistant
+# Offline AI Voice Assistant
 
-![Python Version](https://img.shields.io/badge/python-3.12-blue.svg)
-![Platform](https://img.shields.io/badge/platform-Debian%20%7C%20Ubuntu-orange.svg)
-![Status](https://img.shields.io/badge/status-v1.0.0--Hybrid-brightgreen.svg)
+**A privacy-focused voice assistant powered by locally running AI models.**
 
-Este projeto foi desenvolvido como o desafio final do curso da **Digital Innovation One (DIO)**. Trata-se de um assistente de voz inteligente que combina processamento local de alta performance com inteligência em nuvem.
+A Python-based voice assistant designed to recognize speech, generate intelligent responses, and synthesize natural-sounding audio without relying on paid cloud APIs.
 
-> **Marcos do Projeto:** Esta **v1.0.0** foca na estabilidade do pipeline de áudio e na integração híbrida (STT Local + LLM Cloud).
+## Key Features
 
----
+- **Offline speech recognition:** Faster-Whisper with CPU inference.
+- **Voice activity detection:** WebRTC VAD identifies speech segments.
+- **Local AI inference:** Ollama with the Qwen 2.5 3B language model.
+- **Offline text-to-speech:** Piper TTS with a Brazilian Portuguese voice.
+- **Privacy-focused architecture:** Audio and text processing run locally.
+- **Linux support:** Developed and tested on Debian.
 
-## Fluxo de Funcionamento
-[Som ambiente] -> **VAD** (Filtro de voz) -> **Faster-Whisper** (Transcrição Local) -> **GPT-4o** (Inteligência) -> **gTTS** (Sintetizador) -> [Resposta em Áudio]
+## System Architecture
 
-
-
----
-
-## Diferenciais de Engenharia
-
-- **VAD (Voice Activity Detection):** Implementação de `webrtcvad` nível 3 para garantir que o sistema só processe fala humana, economizando recursos e evitando falsos positivos.
-- **Infrerência Local (STT):** Utilização do `faster-whisper` com quantização `int8`, permitindo transcrição rápida mesmo em CPUs domésticas.
-- **Tratamento de Exceções Proativo:** Se o saldo da API acabar ou a chave estiver ausente, o assistente utiliza o próprio motor de voz para orientar o usuário sobre como proceder.
-- **Estabilidade ALSA/PyAudio:** Gerenciamento rigoroso de buffers e streams para evitar travamentos comuns em sistemas Linux.
-
----
-
-## Stack Tecnológica
-
-| Camada | Tecnologia | Implementação |
-| :--- | :--- | :--- |
-| **STT** | Faster-Whisper | Local (CPU) |
-| **LLM** | OpenAI GPT-4o | Cloud (API) |
-| **TTS** | gTTS | Cloud (API) |
-| **VAD** | WebRTCVAD | Local (Real-time) |
-| **Audio** | PyAudio / mpg123 | Local (System) |
-
----
-
-## Instalação e Execução
-
-### 1. Dependências do Sistema
-Prepare as bibliotecas de áudio essenciais:
-```bash
-sudo apt update && sudo apt install portaudio19-dev python3-dev mpg123 -
-```
-### 2. Preparação do Ambiente Virtual
-
-# Clone e acesse o diretório
-
-```bash
-git clone https://github.com/Mauricioosu/Multi-Language_Voice_Assistant.git
-cd Multi-Language_Voice_Assistant
+```text
+Microphone
+    |
+    v
+PyAudio + WebRTC VAD
+    |
+    v
+Faster-Whisper (Speech-to-Text)
+    |
+    v
+Ollama + Qwen 2.5 3B (Local LLM)
+    |
+    v
+Piper TTS (Text-to-Speech)
+    |
+    v
+Speakers
 ```
 
-### 3. Configuração de Variáveis (API Key)
-Crie um arquivo .env na raiz do projeto:
+## Technology Stack
 
-```bash
-OPENAI_API_KEY=sua_chave_aqui
-```
+| Component | Technology |
+|---|---|
+| Programming Language | Python |
+| Speech Recognition | Faster-Whisper |
+| Voice Activity Detection | WebRTC VAD |
+| Language Model | Qwen 2.5 3B |
+| Local Model Runtime | Ollama |
+| Speech Synthesis | Piper TTS |
+| Audio Processing | PyAudio |
+| Operating System | Debian Linux |
 
-### 4. Execução do Projeto
-```bash
-python main.py
-```
+## Project Status
 
-Roadmap de Evolução
+The core voice interaction pipeline has been successfully tested on Debian Linux.
 
-- [x] v1.0.0: Versão Híbrida Estável (VAD + Faster-Whisper + gTTS).
- 
-  [ ] v1.1.0: Integração com Ollama (Llama 3) para LLM 100% Offline.
+**Completed:** Speech capture, voice activity detection, speech transcription, local response generation, and spoken output.
 
-  [ ] v1.2.0: Migração para Piper TTS (Voz local ultrarrápida).
+**Planned:** Automated testing, modular architecture, performance benchmarks, and multilingual voice interaction.
 
-  [ ] v2.0.0: Suporte Cross-platform nativo (Windows/macOS).
+## Future Improvements
 
----
+- [ ] Refactor the application into independent modules.
+- [ ] Implement automated tests using pytest.
+- [ ] Add GitHub Actions for continuous integration.
+- [ ] Optimize inference latency and audio device management.
+- [ ] Implement end-to-end multilingual support.
+- [ ] Publish performance benchmarks and a demonstration video.
 
-Desenvolvido por Mauricio Rafael de Souza Osuna
-
----
+Developed por Mauricio Rafael de Souza Osuna
