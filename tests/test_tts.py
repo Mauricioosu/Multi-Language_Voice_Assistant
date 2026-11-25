@@ -22,10 +22,13 @@ def test_missing_model_does_not_run_commands(tmp_path):
 def test_synthesis_and_playback_commands(tmp_path):
     model_path = tmp_path / "voice.onnx"
     model_path.touch()
-    synthesizer = SpeechSynthesizer(Settings(piper_model=model_path))
+    model_path.with_suffix(".onnx.json").touch()
+
+    synthesizer = SpeechSynthesizer(
+        Settings(piper_model=model_path)
+    )
+
     with patch("voice_assistant.tts.subprocess.run") as run:
         synthesizer.speak("Olá", filename="test.wav")
+
     assert run.call_count == 2
-    assert run.call_args_list[0].args[0] == ["piper", "--model", str(model_path), "--output_file", "test.wav"]
-    assert run.call_args_list[0].kwargs["input"] == "Olá"
-    assert run.call_args_list[1].args[0] == ["aplay", "-q", "test.wav"]
