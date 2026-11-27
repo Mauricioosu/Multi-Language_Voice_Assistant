@@ -9,6 +9,7 @@ from .config import Settings
 from .llm import LocalChatModel
 from .stt import SpeechRecognizer
 from .tts import SpeechSynthesizer
+from .metrics import PerformanceMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +29,17 @@ class VoiceAssistant:
         logger.info("🚀 Offline assistant started!")
 
         while True:
-            if self.recorder.record("input.wav"):
-                text = self.recognizer.transcribe("input.wav")
+            metrics = PerformanceMetrics()
+
+            with metrics.measure("recording"):
+                recorded = self.recorder.record("input.wav")
+
+            if recorded:
+
+                with metrics.measure("stt"):
+                    text = self.recognizer.transcribe(
+                        "input.wav"
+                    )
 
                 if text and len(text) > 2:
                     language = self.recognizer.detected_language
@@ -48,10 +58,11 @@ class VoiceAssistant:
                         flush=True,
                     )
 
-                    answer = self.chat.respond(
-                        text,
-                        language=language,
-                    )
+                    with metrics.measure("llm"):
+                        answer = self.chat.respond(
+                            text,
+                            language=language,
+                        )
 
                     if answer:
                         print(
@@ -63,5 +74,11 @@ class VoiceAssistant:
                             answer,
                             language=language,
                         )
+
+                        metrics.timings.update(
+                            self.synthesizer.metrics.timings
+                        )
+
+                        metrics.report(language)
 
             await asyncio.sleep(0.5)

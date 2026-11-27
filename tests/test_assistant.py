@@ -80,6 +80,11 @@ def test_multilingual_pipeline(
             language=language,
         )
 
+        synthesizer.return_value.metrics.timings = {
+            "tts_synthesis": 0.5,
+            "playback": 1.0,
+        }
+
 
 def test_unsupported_language_skips_response():
     with (
