@@ -5,6 +5,7 @@ import logging
 import subprocess
 
 from .config import Settings
+from .metrics import PerformanceMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +14,7 @@ class SpeechSynthesizer:
     def __init__(self, settings: Settings):
         self.model_path = settings.piper_model
         self.models = settings.piper_models
+        self.metrics = PerformanceMetrics()
 
     def speak(
         self,
@@ -21,6 +23,8 @@ class SpeechSynthesizer:
         *,
         language: str = "pt",
     ) -> None:
+
+        self.metrics = PerformanceMetrics()
 
         if not text or not text.strip():
             return
@@ -58,26 +62,28 @@ class SpeechSynthesizer:
                 model_path.name,
             )
 
-            subprocess.run(
-                [
-                    "piper",
-                    "--model",
-                    str(model_path),
-                    "--output_file",
-                    filename,
-                ],
-                input=text,
-                text=True,
-                check=True,
-                timeout=90,
-                stdout=subprocess.DEVNULL,
-            )
+            with self.metrics.measure("tts_synthesis"):
+                subprocess.run(
+                    [
+                        "piper",
+                        "--model",
+                        str(model_path),
+                        "--output_file",
+                        filename,
+                    ],
+                    input=text,
+                    text=True,
+                    check=True,
+                    timeout=90,
+                    stdout=subprocess.DEVNULL,
+                )
 
-            subprocess.run(
-                ["aplay", "-q", filename],
-                check=True,
-                timeout=90,
-            )
+            with self.metrics.measure("playback"):
+                subprocess.run(
+                    ["aplay", "-q", filename],
+                    check=True,
+                    timeout=90,
+                )
 
         except FileNotFoundError as error:
             logger.error(
